@@ -89,18 +89,15 @@ class ChiSquaredProcessor(MRJob):
             MRStep(
                 mapper   = self.mapper_1,
                 reducer  = self.reducer_1
-            )
-            ,
+            ),
             MRStep(
                 mapper   = self.mapper_2,
                 reducer  = self.reducer_2
-            )
-            ,
+            ),
             MRStep(
                 mapper   = self.mapper_3,
                 reducer  = self.reducer_3
-            )
-            ,
+            ),
             MRStep(
                 mapper   = self.mapper_4,
                 reducer  = self.reducer_4
