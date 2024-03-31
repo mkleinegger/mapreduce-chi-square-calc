@@ -25,10 +25,10 @@ class ChiSquaredProcessor(MRJob):
         for category, reviews in compromised_reviews:
             yield category, (reviews, N)
 
-    def mapper_term_for_categories(self, category, count_reviews):
+    def mapper_term_for_categories(self, category, reviews_N):
         # Mapper for counting the all different combinations of terms occuring in a all categories
-        reviews, N = count_reviews
-        yield (category, N), reviews#(reviews, N)
+        reviews, N = reviews_N
+        yield (category, N), reviews
 
        
     def reducer_term_for_categories(self, category_N, reviews):
@@ -44,7 +44,6 @@ class ChiSquaredProcessor(MRJob):
         for review in reviews:
             for term in review:
                 yield (category, term), (1, count, N)
-
 
     def reducer_3(self, category_term, counts): 
         documents = list(counts)
@@ -80,16 +79,18 @@ class ChiSquaredProcessor(MRJob):
             chi_squared = N * (A*D - B*C)**2 / ((A+B)*(A+C)*(B+D)*(C+D))
             yield category_term, chi_squared
 
-        #yield category_term, list(number_count_occurence_N)
-
     def mapper_6(self, category_term, chi_squared):
         category, term = category_term
         yield category, (term, chi_squared)
+        #yield None, term
 
     def reducer_6(self, category, term_chi_squared):
         chi_squared_terms = list(term_chi_squared)
         chi_squared_terms.sort(key=lambda x: x[1], reverse=True)
 
+        #if category is None:
+        #    yield ', '.join(set(chi_squared_terms)), ""
+        #else: 
         yield category, ', '.join(f"{x}={y}" for x, y in chi_squared_terms[:75])
 
 
