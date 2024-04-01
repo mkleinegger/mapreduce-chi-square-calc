@@ -23,35 +23,27 @@ class ChiSquaredJob(MRJob):
         self.k = self.options.k
 
 
-    def mapper_parse_json(self, _, line: str):
-        data = json.loads(line)
-        yield (data['reviewerID'], data['asin']), (data['category'], data['reviewText'])
-
-
-    def mapper_tokenization(self, key: tuple[str, str], data: tuple[str, str]):
-        category, text = data
-
-        # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
-        words = re.split('[^a-zA-Z<>^|]+', text)
-
-        for word in words:
-            yield key, (category, word)
-
-
-    def mapper_case_fold(self, key: tuple[str, str], data: tuple[str, str]):
-        category, token = data
-        yield key, (category, token.lower())
-
-
-    def mapper_init_stopwords(self):
+    def init_stopwords(self):
         with open(self.stopwords_file, 'r') as file:
             self.stopwords = set(file.read().splitlines())
 
 
-    def mapper_stopword_removal(self, key: tuple[str, str], data: tuple[str, str]):
-        category, token = data
-        
-        if len(token) > 1 and (token not in self.stopwords):
+    def mapper_preprocessing(self, _, line: str):
+        data = json.loads(line)
+
+        key = (data['reviewerID'], data['asin'])
+        category = data['category']
+
+        # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
+        tokens = re.split('[^a-zA-Z<>^|]+', data['reviewText'])
+
+        # case fold
+        tokens = map(str.lower, tokens)
+
+        # remove stopwords
+        tokens = filter(lambda token: len(token) > 1 and (token not in self.stopwords), tokens)
+
+        for token in tokens:
             yield key, (category, token)
 
 
@@ -136,10 +128,7 @@ class ChiSquaredJob(MRJob):
 
     def steps(self) -> list[MRStep]:
         return [
-            MRStep(mapper=self.mapper_parse_json),
-            MRStep(mapper=self.mapper_tokenization),
-            MRStep(mapper=self.mapper_case_fold),
-            MRStep(mapper_init=self.mapper_init_stopwords, mapper=self.mapper_stopword_removal),
+            MRStep(mapper_init=self.init_stopwords, mapper=self.mapper_preprocessing),
             MRStep(mapper=self.mapper_count, combiner=self.combiner_count, reducer=self.reducer_count),
             MRStep(reducer=self.reducer_chi_squared),
             MRStep(combiner=self.combiner_top_k, reducer=self.reducer_top_k),
