@@ -1,9 +1,59 @@
-from itertools import chain
 from typing import Generator
+from mrjob.job import MRJob
 from mrjob.step import MRStep
-from subtask import Subtask
+import re
+import json
 
-class ChiSquared(Subtask):
+
+class ChiSquaredJob(MRJob):
+
+
+    def configure_args(self):
+        super(ChiSquaredJob, self).configure_args()
+
+        self.FILES = ['../data/stopwords.txt']
+        self.add_file_arg('--stopwords')
+        self.add_passthru_arg('-k', type=int, default=75)
+
+
+    def load_args(self, args):
+        super(ChiSquaredJob, self).load_args(args)
+
+        self.stopwords_file = self.options.stopwords if self.options.stopwords else 'stopwords.txt'
+        self.k = self.options.k
+
+
+    def mapper_parse_json(self, _, line: str):
+        data = json.loads(line)
+        yield (data['reviewerID'], data['asin']), (data['category'], data['reviewText'])
+
+
+    def mapper_tokenization(self, key: tuple[str, str], data: tuple[str, str]):
+        category, text = data
+
+        # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
+        words = re.split('[^a-zA-Z<>^|]+', text)
+
+        for word in words:
+            yield key, (category, word)
+
+
+    def mapper_case_fold(self, key: tuple[str, str], data: tuple[str, str]):
+        category, token = data
+        yield key, (category, token.lower())
+
+
+    def mapper_init_stopwords(self):
+        with open(self.stopwords_file, 'r') as file:
+            self.stopwords = set(file.read().splitlines())
+
+
+    def mapper_stopword_removal(self, key: tuple[str, str], data: tuple[str, str]):
+        category, token = data
+        
+        if len(token) > 1 and (token not in self.stopwords):
+            yield key, (category, token)
+
 
     def mapper_count(self, key: tuple[str, str], data: tuple[str, str]):
         category, token = data
@@ -71,8 +121,30 @@ class ChiSquared(Subtask):
         yield category, (chi_squared, token)
 
 
+    def combiner_top_k(self, key: str, data: list[any]):
+        top_k = sorted(data, reverse=True)[:self.k]
+
+        for value in top_k:
+            yield key, value
+
+
+    def reducer_top_k(self, key: str, data: list[any]):
+        top_k = sorted(data, reverse=True)[:self.k]
+
+        yield key, tuple(top_k)
+
+
     def steps(self) -> list[MRStep]:
         return [
+            MRStep(mapper=self.mapper_parse_json),
+            MRStep(mapper=self.mapper_tokenization),
+            MRStep(mapper=self.mapper_case_fold),
+            MRStep(mapper_init=self.mapper_init_stopwords, mapper=self.mapper_stopword_removal),
             MRStep(mapper=self.mapper_count, combiner=self.combiner_count, reducer=self.reducer_count),
             MRStep(reducer=self.reducer_chi_squared),
+            MRStep(combiner=self.combiner_top_k, reducer=self.reducer_top_k),
         ]
+
+
+if __name__ == '__main__':
+    ChiSquaredJob.run()

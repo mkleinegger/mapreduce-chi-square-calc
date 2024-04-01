@@ -1,27 +1,8 @@
-from mrjob.job import MRJob
-from mrjob.step import MRStep
-from chi_squared import ChiSquared
-from pre_processer import PreProcessor
-from parse_json import ParseJson
-from top_k import TopK
-
-
-class Runner(MRJob):
-
-    _TASKS = [
-        ParseJson(),
-        PreProcessor(),
-        ChiSquared(),
-        TopK(75),
-    ]
-    _STEPS = [step for task in _TASKS for step in task.steps()]
-
-    def steps(self) -> list[MRStep]:
-        return self._STEPS
+from chi_squared import ChiSquaredJob
 
 
 if __name__ == '__main__':
-    job = Runner()
+    job = ChiSquaredJob()
 
     with job.make_runner() as runner:
         runner.run()
