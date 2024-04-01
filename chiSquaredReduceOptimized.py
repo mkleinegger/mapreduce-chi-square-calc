@@ -126,7 +126,7 @@ class ChiSquaredProcessor(MRJob):
         else:
             chi_squared_terms = list(term_chi_squared)
             chi_squared_terms.sort(key=lambda x: x[1], reverse=True)
-            yield category, ', '.join(f"{x}={y}" for x, y in chi_squared_terms[:75])
+            yield category, ' '.join(f"{x}:{y}" for x, y in chi_squared_terms[:75])
 
 
     def steps(self):
