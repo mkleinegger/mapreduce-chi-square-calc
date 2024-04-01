@@ -11,7 +11,7 @@ class PreProcessor(Subtask):
             self.stopwords = stopwords
         else:
             with open(stopword_file, 'r') as file:
-                self.stopwords = set(file.readlines())
+                self.stopwords = set(file.read().splitlines())
 
 
     def mapper_tokenization(self, key: tuple[str, str], data: tuple[str, str]):
