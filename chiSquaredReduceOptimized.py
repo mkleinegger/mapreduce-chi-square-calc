@@ -8,11 +8,20 @@ category_counts = {}
 
 class CountingProcessor(MRJob):
     def mapper(self, _, line):
+        """ 
+        This mapper returns for each review of a category 1
+        Returns a key value pair of: category, 1
+        """
+
         data = json.loads(line)
         category = data.get('category', '')
         yield category, 1
 
     def reducer(self, category, counts):
+        """
+        This reducer sums the number of reviews per category
+        Returns a key value pair of: category, number of reviews
+        """
         yield category, sum(counts)
 
     def steps(self):
@@ -26,7 +35,11 @@ class CountingProcessor(MRJob):
 class ChiSquaredProcessor(MRJob):
 
     def mapper_1(self, _, line):
-        # Mapper for counting the number of documents in which a term appears in a category
+        """ 
+        This mapper returns all terms per category for each document occurence
+        Returns a key value pair of: (category, word), 1
+        """
+
         data = json.loads(line)
         category = data.get('category', '')
         reviewText = data.get('reviewText', '')
@@ -37,26 +50,48 @@ class ChiSquaredProcessor(MRJob):
             yield (category, word), 1
 
     def reducer_1(self, category_term, compromised_reviewText):
-        # Reducer for counting the number of documents in which a term appears in a category
+        """ 
+        This reducer sums the occurences of each term per category
+        Returns a key value pair of: (category, term), number
+        """
+
         yield category_term, sum(compromised_reviewText)
 
     def mapper_2(self, category_term, count_term):
-        # Mapper for counting the all different combinations of terms occuring in a all categories
+        """
+        This mapper returns all categories which a term is occuring in and the respective number of occurences per category
+        Returns a key value pair of: term, (category, count_term)
+        """
+
         category, term = category_term
         yield term, (category, count_term)
 
     def reducer_2(self, term, category_count):
-        # Reducer for counting the all different combinations of terms occuring in a all categories
+        """
+        This reducer returns the number of occurences of a term in all categories and the number of occurences of all terms
+        Returns a key value pair of: term, [(category, count_term, number_of_occurences)]
+        """
+
         all_categories_count = list(category_count)
         number_of_occurences = sum([count for _, count in all_categories_count])
         yield term, [(category, count_term, number_of_occurences) for category, count_term in all_categories_count]
 
     def mapper_3(self, term, list_category_count):
+        """
+        This mapper groups the occurences of each term per category
+        Returns a key value pair of: (category, term), (count_term, number_of_occurences)
+        """
+
         for category_count in list_category_count:
             category, count_term, number_of_occurences = category_count
             yield (category, term), (count_term, number_of_occurences)
 
     def reducer_3(self, category_term, list_category_count): 
+        """
+        This reducer calculates the chi squared value for each term per category.
+        Returns a key value pair of: (category, term), chi_squared
+        """
+
         number_count_occurence_N = list(list_category_count)
         category, _ = category_term
         for count in number_count_occurence_N:
@@ -69,11 +104,21 @@ class ChiSquaredProcessor(MRJob):
             yield category_term, chi_squared
 
     def mapper_4(self, category_term, chi_squared):
+        """
+        This mapper groups the chi squared values for each term by category. Additionally it returns all terms per category.
+        Returns a key value pair of: category, (term, chi_squared)
+        """
+
         category, term = category_term
         yield category, (term, chi_squared)
         yield None, term
 
     def reducer_4(self, category, term_chi_squared):
+        """
+        This reducer sorts the chi squared values and returns the 75 highest values for each category. If no category is given, all terms are returned.
+        Returns a key value pair of: category, [term=chi_squared]
+        """
+
         if category is None:
             all_words = set(term_chi_squared)
             all_words = sorted(all_words)
