@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Generator
 from mrjob.job import MRJob
 from mrjob.step import MRStep
@@ -11,15 +12,14 @@ class ChiSquaredJob(MRJob):
     def configure_args(self):
         super(ChiSquaredJob, self).configure_args()
 
-        self.FILES = ['../data/stopwords.txt']
-        self.add_file_arg('--stopwords')
+        self.add_file_arg('--stopwords', default=str(Path(__file__).parent.parent / 'data' / 'stopwords.txt'))
         self.add_passthru_arg('-k', type=int, default=75)
 
 
     def load_args(self, args):
         super(ChiSquaredJob, self).load_args(args)
 
-        self.stopwords_file = self.options.stopwords if self.options.stopwords else 'stopwords.txt'
+        self.stopwords_file = self.options.stopwords
         self.k = self.options.k
 
 
