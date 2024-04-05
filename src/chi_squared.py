@@ -31,7 +31,7 @@ class ChiSquaredJob(MRJob):
     def mapper_preprocessing(self, _, line: str):
         data = json.loads(line)
 
-        key = (data['reviewerID'], data['asin'])
+        document = (data['reviewerID'], data['asin'])
         category = data['category']
 
         # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
@@ -44,73 +44,65 @@ class ChiSquaredJob(MRJob):
         tokens = filter(lambda token: len(token) > 1 and (token not in self.stopwords), tokens)
 
         for token in tokens:
-            yield key, (category, token)
+            yield (document, category, token), None              # count all documents in category containing token
+            yield (document, category, None), None           # count all documents in category
 
 
-    def mapper_count(self, key: tuple[str, str], data: tuple[str, str]):
-        category, token = data
-
-        yield (None, None), ([key], [(category, token)])    # count all documents
-        yield (category, None), ([key], [token])            # count all documents in category
-        yield (None, token), ([key], [category])            # count all documents containing token
-        yield (category, token), ([key], [])                # count all documents in category containing token
+    def combiner_duplicate_elimination(self, key: tuple[str, str, str], values: Generator[any, None, None]):
+        yield key, None
 
 
-    def _eliminate_duplicates(self, cat_tok: tuple[str, str], values: Generator[tuple, None, None]):
-        keys, cat_toks = set(), set()
+    def reducer_duplicate_elimination(self, key: tuple[str, str, str], values: Generator[any, None, None]):
+        _, category, token = key
+        yield (category, token), 1
 
-        if cat_tok == [None, None]:
-            for key, cat_tok in values:
-                keys.update(map(tuple, key))
-                cat_toks.update(map(tuple, cat_tok))
+
+    def combiner_count(self, key: tuple[str, str], values: Generator[list[int], None, None]):
+        yield key, sum(values)
+
+
+    def reducer_count(self, key: tuple[str, str], values: Generator[list[int], None, None]):
+        category, token = key
+
+        if token is None:
+            yield None, (category, sum(values))
         else:
-            for key, cat_tok in values:
-                keys.update(map(tuple, key))
-                cat_toks.update(cat_tok)
-
-        return keys, cat_toks
-    
-
-    def combiner_count(self, cat_tok: tuple[str, str], values: Generator[tuple, None, None]):
-        keys, cat_toks = self._eliminate_duplicates(cat_tok, values)
-
-        yield cat_tok, (tuple(keys), tuple(cat_toks))
+            yield category, (token, sum(values))
 
 
-    def reducer_count(self, cat_tok: tuple[str, str], values: Generator[tuple, None, None]):
-        keys, cat_toks = self._eliminate_duplicates(cat_tok, values)
-        category, token = cat_tok
-        n = len(keys)
+    def reducer_total_sum(self, category: str | None, values: Generator[tuple[str, int], None, None]):
+        if category is not None:
+            for value in values:
+                yield category, value
+            return
         
-        if (category is None) and (token is None):
-            for (category, token) in cat_toks:
-                yield (category, token), ('n', n)
-        elif category is None:
-            for category in cat_toks:
-                yield (category, token), ('t', n)
-        elif token is None:
-            for token in cat_toks:
-                yield (category, token), ('c', n)
-        else:
-            yield cat_tok, ('ct', n)
+        categories, counts = zip(*values)
+        total_count = sum(counts)
+        
+        for category, count in zip(categories, counts):
+            yield category, (None, (count, total_count))
 
 
-    def reducer_chi_squared(self, cat_tok: tuple[str, str], values: Generator[tuple[str, int], None, None]):
-        category, token = cat_tok
-        counts = {key: value for key, value in values}
+    def reducer_distribute_sums(self, category: str, values: Generator[tuple[str, int], None, None]):
+        counts = {token: count for token, count in values}
+        category_sum, total_sum = counts.pop(None)
 
-        n = counts['n']
-        n_c_t = counts.get('ct', 0)
-        n_t = counts.get('t', 0)
-        n_c = counts.get('c', 0)
-        n_c_nt = n_c - n_c_t
-        n_nt = n - n_t
-        n_nc_t = n_t - n_c_t
-        n_nc_nt = n_nt - n_c_nt
+        for token, count in counts.items():
+            yield token, (category, count, category_sum, total_sum)
 
-        chi_squared = n * ((n_c_t * n_nc_nt - n_nc_t * n_c_nt) ** 2) / ((n_c_t + n_nc_t) * (n_c_t + n_c_nt) * (n_nc_t + n_nc_nt) * (n_c_nt + n_nc_nt))
 
-        yield category, (chi_squared, token)
+    def reducer_chi_squared(self, token: str, values: Generator[tuple[str, int, int], None, None]):
+        categories, counts, category_sums, total_sums = zip(*values)
+        token_sum = sum(counts)
+
+        for category, a, category_sum, n in zip(categories, counts, category_sums, total_sums):
+            b = token_sum - a
+            c = category_sum - a
+            d = n - a - b - c
+
+            chi_squared = n * ((a * d - b * c) ** 2) / ((a + b) * (a + c) * (b + d) * (c + d))
+
+            yield category, (chi_squared, token)
 
 
     def combiner_top_k(self, key: str, data: list[any]):
@@ -129,7 +121,10 @@ class ChiSquaredJob(MRJob):
     def steps(self) -> list[MRStep]:
         return [
             MRStep(mapper_init=self.init_stopwords, mapper=self.mapper_preprocessing),
-            MRStep(mapper=self.mapper_count, combiner=self.combiner_count, reducer=self.reducer_count),
+            MRStep(combiner=self.combiner_duplicate_elimination, reducer=self.reducer_duplicate_elimination),
+            MRStep(combiner=self.combiner_count, reducer=self.reducer_count),
+            MRStep(reducer=self.reducer_total_sum),
+            MRStep(reducer=self.reducer_distribute_sums),
             MRStep(reducer=self.reducer_chi_squared),
             MRStep(combiner=self.combiner_top_k, reducer=self.reducer_top_k),
         ]
