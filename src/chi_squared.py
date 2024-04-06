@@ -109,12 +109,15 @@ class ChiSquaredJob(MRJob):
 
     def steps(self) -> list[MRStep]:
         return [
-            MRStep(mapper_init=self.init_stopwords, mapper=self.mapper_preprocessing),
-            MRStep(combiner=self.combiner_count, reducer=self.reducer_count),
+            MRStep(mapper_init=self.init_stopwords,
+                   mapper=self.mapper_preprocessing,
+                   combiner=self.combiner_count,
+                   reducer=self.reducer_count),
             MRStep(reducer=self.reducer_total_sum),
             MRStep(reducer=self.reducer_distribute_sums),
             MRStep(reducer=self.reducer_chi_squared),
-            MRStep(combiner=self.combiner_top_k, reducer=self.reducer_top_k),
+            MRStep(combiner=self.combiner_top_k,
+                   reducer=self.reducer_top_k),
         ]
 
 
