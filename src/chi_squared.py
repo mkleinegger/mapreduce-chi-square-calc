@@ -12,19 +12,13 @@ class ChiSquaredJob(MRJob):
     def configure_args(self):
         super(ChiSquaredJob, self).configure_args()
 
-        self.add_file_arg('--stopwords', default=str(Path(__file__).parent.parent / 'data' / 'stopwords.txt'))
+        self.FILES = [str(Path(__file__).parent.parent / 'data' / 'stopwords.txt')]
+        self.add_file_arg('--stopwords', default='stopwords.txt')
         self.add_passthru_arg('-k', type=int, default=75)
 
 
-    def load_args(self, args):
-        super(ChiSquaredJob, self).load_args(args)
-
-        self.stopwords_file = self.options.stopwords
-        self.k = self.options.k
-
-
     def init_stopwords(self):
-        with open(self.stopwords_file, 'r') as file:
+        with open(self.options.stopwords, 'r') as file:
             self.stopwords = set(file.read().splitlines())
 
 
@@ -101,14 +95,14 @@ class ChiSquaredJob(MRJob):
 
 
     def combiner_top_k(self, key: str, data: list[any]):
-        top_k = sorted(data, reverse=True)[:self.k]
+        top_k = sorted(data, reverse=True)[:self.options.k]
 
         for value in top_k:
             yield key, value
 
 
     def reducer_top_k(self, key: str, data: list[any]):
-        top_k = sorted(data, reverse=True)[:self.k]
+        top_k = sorted(data, reverse=True)[:self.options.k]
 
         yield key, tuple(top_k)
 
