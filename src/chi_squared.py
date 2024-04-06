@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Generator
+from typing import Generator, Union
 from mrjob.job import MRJob
 from mrjob.step import MRStep
 import re
@@ -67,7 +67,7 @@ class ChiSquaredJob(MRJob):
             yield category, (token, sum(values))
 
 
-    def reducer_total_sum(self, category: str | None, values: Generator[tuple[str, int], None, None]):
+    def reducer_total_sum(self, category: Union[str, None], values: Generator[tuple[str, int], None, None]):
         if category is not None:
             for value in values:
                 yield category, value
