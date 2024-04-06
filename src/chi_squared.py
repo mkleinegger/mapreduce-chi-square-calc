@@ -30,8 +30,6 @@ class ChiSquaredJob(MRJob):
 
     def mapper_preprocessing(self, _, line: str):
         data = json.loads(line)
-
-        document = (data['reviewerID'], data['asin'])
         category = data['category']
 
         # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
