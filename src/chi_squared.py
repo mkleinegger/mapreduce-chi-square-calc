@@ -43,18 +43,15 @@ class ChiSquaredJob(MRJob):
         # remove stopwords
         tokens = filter(lambda token: len(token) > 1 and (token not in self.stopwords), tokens)
 
+        # remove duplicates
+        tokens = set(tokens)
+
+        # count all documents in category
+        yield (category, None), 1
+
+        # count all documents in category containing token
         for token in tokens:
-            yield (document, category, token), None              # count all documents in category containing token
-            yield (document, category, None), None           # count all documents in category
-
-
-    def combiner_duplicate_elimination(self, key: tuple[str, str, str], values: Generator[any, None, None]):
-        yield key, None
-
-
-    def reducer_duplicate_elimination(self, key: tuple[str, str, str], values: Generator[any, None, None]):
-        _, category, token = key
-        yield (category, token), 1
+            yield (category, token), 1
 
 
     def combiner_count(self, key: tuple[str, str], values: Generator[list[int], None, None]):
@@ -121,7 +118,6 @@ class ChiSquaredJob(MRJob):
     def steps(self) -> list[MRStep]:
         return [
             MRStep(mapper_init=self.init_stopwords, mapper=self.mapper_preprocessing),
-            MRStep(combiner=self.combiner_duplicate_elimination, reducer=self.reducer_duplicate_elimination),
             MRStep(combiner=self.combiner_count, reducer=self.reducer_count),
             MRStep(reducer=self.reducer_total_sum),
             MRStep(reducer=self.reducer_distribute_sums),
