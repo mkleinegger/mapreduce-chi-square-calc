@@ -62,10 +62,18 @@ class ChiSquaredJob(MRJob):
         for category, count in counts.items():
             yield category, (token, count, token_sum)
 
+        if token is not None:
+            yield None, token
+
 
     def reducer_chi_squared(self, category: str, values: Generator[tuple[str, int, int], None, None]):
+        if category is None:
+            yield None, sorted(values)
+            return
+
         counts = {token: (count, token_sum) for token, count, token_sum in values}
         category_sum, n = counts.pop(None)
+        result = []
 
         for token, (a, token_sum) in counts.items():
             b = token_sum - a
@@ -73,21 +81,9 @@ class ChiSquaredJob(MRJob):
             d = n - a - b - c
 
             chi_squared = n * ((a * d - b * c) ** 2) / ((a + b) * (a + c) * (b + d) * (c + d))
+            result.append((chi_squared, token))
 
-            yield category, (chi_squared, token)
-
-
-    def combiner_top_k(self, key: str, data: list[any]):
-        top_k = sorted(data, reverse=True)[:self.options.k]
-
-        for value in top_k:
-            yield key, value
-
-
-    def reducer_top_k(self, key: str, data: list[any]):
-        top_k = sorted(data, reverse=True)[:self.options.k]
-
-        yield key, tuple(top_k)
+        yield category, sorted(result, reverse=True)[:self.options.k]
 
 
     def steps(self) -> list[MRStep]:
@@ -98,8 +94,6 @@ class ChiSquaredJob(MRJob):
                    reducer=self.reducer_count),
             MRStep(reducer=self.reducer_token_sum),
             MRStep(reducer=self.reducer_chi_squared),
-            MRStep(combiner=self.combiner_top_k,
-                   reducer=self.reducer_top_k),
         ]
 
 
