@@ -46,45 +46,28 @@ class ChiSquaredJob(MRJob):
             yield (category, token), 1
 
 
-    def combiner_count(self, key: tuple[str, str], values: Generator[list[int], None, None]):
+    def combiner_count(self, key: Union[tuple[str, str], None], values: Generator[list[int], None, None]):
         yield key, sum(values)
 
 
-    def reducer_count(self, key: tuple[str, str], values: Generator[list[int], None, None]):
+    def reducer_count(self, key: Union[tuple[str, str], None], values: Generator[list[int], None, None]):
         category, token = key
-
-        if token is None:
-            yield None, (category, sum(values))
-        else:
-            yield category, (token, sum(values))
+        yield token, (category, sum(values))
 
 
-    def reducer_total_sum(self, category: Union[str, None], values: Generator[tuple[str, int], None, None]):
-        if category is not None:
-            for value in values:
-                yield category, value
-            return
-        
-        categories, counts = zip(*values)
-        total_count = sum(counts)
-        
-        for category, count in zip(categories, counts):
-            yield category, (None, (count, total_count))
+    def reducer_token_sum(self, token: str, values: Generator[tuple[str, int], None, None]):
+        counts = {category: count for category, count in values}
+        token_sum = sum(counts.values())
+
+        for category, count in counts.items():
+            yield category, (token, count, token_sum)
 
 
-    def reducer_distribute_sums(self, category: str, values: Generator[tuple[str, int], None, None]):
-        counts = {token: count for token, count in values}
-        category_sum, total_sum = counts.pop(None)
+    def reducer_chi_squared(self, category: str, values: Generator[tuple[str, int, int], None, None]):
+        counts = {token: (count, token_sum) for token, count, token_sum in values}
+        category_sum, n = counts.pop(None)
 
-        for token, count in counts.items():
-            yield token, (category, count, category_sum, total_sum)
-
-
-    def reducer_chi_squared(self, token: str, values: Generator[tuple[str, int, int], None, None]):
-        categories, counts, category_sums, total_sums = zip(*values)
-        token_sum = sum(counts)
-
-        for category, a, category_sum, n in zip(categories, counts, category_sums, total_sums):
+        for token, (a, token_sum) in counts.items():
             b = token_sum - a
             c = category_sum - a
             d = n - a - b - c
@@ -113,8 +96,7 @@ class ChiSquaredJob(MRJob):
                    mapper=self.mapper_preprocessing,
                    combiner=self.combiner_count,
                    reducer=self.reducer_count),
-            MRStep(reducer=self.reducer_total_sum),
-            MRStep(reducer=self.reducer_distribute_sums),
+            MRStep(reducer=self.reducer_token_sum),
             MRStep(reducer=self.reducer_chi_squared),
             MRStep(combiner=self.combiner_top_k,
                    reducer=self.reducer_top_k),
