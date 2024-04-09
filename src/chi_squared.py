@@ -56,28 +56,30 @@ class ChiSquaredJob(MRJob):
 
 
     def reducer_token_sum(self, token: str, values: Generator[tuple[str, int], None, None]):
-        counts = {category: count for category, count in values}
-        token_sum = sum(counts.values())
-
-        for category, count in counts.items():
-            yield category, (token, count, token_sum)
-
+        # collecting dictionary of all tokens
         if token is not None:
             yield None, token
+    
+        counts = {category: count for category, count in values}
+        n_t = sum(counts.values())
+
+        for category, count in counts.items():
+            yield category, (token, count, n_t)
 
 
     def reducer_chi_squared(self, category: str, values: Generator[tuple[str, int, int], None, None]):
+        # collecting dictionary of all tokens
         if category is None:
             yield None, sorted(values)
             return
 
-        counts = {token: (count, token_sum) for token, count, token_sum in values}
-        category_sum, n = counts.pop(None)
+        counts = {token: (count, n_t) for token, count, n_t in values}
+        n_c, n = counts.pop(None)
         result = []
 
-        for token, (a, token_sum) in counts.items():
-            b = token_sum - a
-            c = category_sum - a
+        for token, (a, n_t) in counts.items():
+            b = n_t - a
+            c = n_c - a
             d = n - a - b - c
 
             chi_squared = n * ((a * d - b * c) ** 2) / ((a + b) * (a + c) * (b + d) * (c + d))
