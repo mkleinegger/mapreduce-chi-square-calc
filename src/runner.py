@@ -1,5 +1,4 @@
-from chiSquaredReduceOptimized import ChiSquaredProcessor
-
+from chiSquaredReduce import ChiSquaredProcessor
 if __name__ == '__main__':
     job = ChiSquaredProcessor()
 
@@ -8,6 +7,7 @@ if __name__ == '__main__':
 
         results = {}
         for key, values in job.parse_output(runner.cat_output()):
+            
             if key is None:
                 results[key] = ' '.join(values)
             else:

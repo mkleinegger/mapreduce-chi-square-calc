@@ -9,7 +9,7 @@ class ChiSquaredProcessor(MRJob):
     def configure_args(self):
         super(ChiSquaredProcessor, self).configure_args()
 
-        self.FILES = [str(Path(__file__).parent / 'data' / 'stopwords.txt')]
+        self.FILES = [str(Path(__file__).parent.parent / 'data' / 'stopwords.txt')]
         self.add_file_arg('--stopwords', default='stopwords.txt')
         self.add_passthru_arg('-k', type=int, default=75)
 
@@ -63,6 +63,7 @@ class ChiSquaredProcessor(MRJob):
         if category is None:
             yield None, list(set(list_category_count))
             return
+
         map_category_count = { term: (count_term, number_of_occurences) for term, count_term, number_of_occurences in list_category_count}
         category_count, N = map_category_count.pop(None)
 
@@ -75,27 +76,17 @@ class ChiSquaredProcessor(MRJob):
             D = N - category_count - B
             results.append((term, N * (A*D - B*C)**2 / ((A+B)*(A+C)*(B+D)*(C+D))))
             
-        yield category, sorted(results, key=lambda x: x[1], reverse=True)[:75]
-
-    def reducer_to_output(self, category, term_chi_squared):
-        """
-        This reducer sorts the chi squared values and returns the 75 highest values for each category. If no category is given, all terms are returned.
-        Returns a key value pair of: category, [term=chi_squared]
-        """
-        if category is None:
-            yield category, sorted(list(set(term_chi_squared)))
-        else: yield category, sorted(list(term_chi_squared), key=lambda x: x[1], reverse=True)[:self.options.k]
+        yield category, sorted(results, key=lambda x: x[1], reverse=True)[:self.options.k]
 
     def steps(self):
         return [
             MRStep(
                 mapper_init = self.init_stopwords,
-                mapper   = self.mapper_1,
-                reducer  = self.reducer_1
+                mapper   = self.mapper_preprocessing,
+                reducer  = self.reducer_count_terms
             ),
-            MRStep(reducer  = self.reducer_2),
-            MRStep(reducer  = self.reducer_3),
-            MRStep(reducer  = self.reducer_4)
+            MRStep(reducer  = self.reducer_count_terms_over_categories),
+            MRStep(reducer  = self.reducer_calc_chi_squared)
         ]
    
 if __name__ == '__main__':
