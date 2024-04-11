@@ -64,6 +64,8 @@ class ChiSquaredProcessor(MRJob):
             for term in review:
                 yield (category, term), (1, count, N)
 
+        # appliances: Document1: Apfel + Banane, Document2: Apfel + Birne
+
     def reducer_3(self, category_term, counts): 
         """ 
         This reducer counts the occurences of each term per category

@@ -1,40 +1,24 @@
+from pathlib import Path
 from mrjob.job import MRJob
 from mrjob.step import MRStep
 import re
 import json
 
-stopwords = set()
-category_counts = {}
-
-class CountingProcessor(MRJob):
-    def mapper(self, _, line):
-        """ 
-        This mapper returns for each review of a category 1
-        Returns a key value pair of: category, 1
-        """
-
-        data = json.loads(line)
-        category = data.get('category', '')
-        yield category, 1
-
-    def reducer(self, category, counts):
-        """
-        This reducer sums the number of reviews per category
-        Returns a key value pair of: category, number of reviews
-        """
-        yield category, sum(counts)
-
-    def steps(self):
-        return [
-            MRStep(
-                mapper   = self.mapper,
-                reducer  = self.reducer
-            )
-        ]
-
 class ChiSquaredProcessor(MRJob):
 
-    def mapper_1(self, _, line):
+    def configure_args(self):
+        super(ChiSquaredProcessor, self).configure_args()
+
+        self.FILES = [str(Path(__file__).parent / 'data' / 'stopwords.txt')]
+        self.add_file_arg('--stopwords', default='stopwords.txt')
+        self.add_passthru_arg('-k', type=int, default=75)
+
+
+    def init_stopwords(self):
+        with open(self.options.stopwords, 'r') as file:
+            self.stopwords = set(file.read().splitlines())
+
+    def mapper_preprocessing(self, _, line):
         """ 
         This mapper returns all terms per category for each document occurence
         Returns a key value pair of: (category, word), 1
@@ -45,124 +29,74 @@ class ChiSquaredProcessor(MRJob):
         reviewText = data.get('reviewText', '')
         word_list = re.split('[^a-zA-Z<>^|]+', reviewText.lower())
 
-        word_set = set([word for word in word_list if word not in stopwords and word.strip() != '' and len(word) > 1])
-        for word in word_set:
-            yield (category, word), 1
+        word_set = set([word for word in word_list if word not in self.stopwords and word.strip() != '' and len(word) > 1])
 
-    def reducer_1(self, category_term, compromised_reviewText):
+        yield (category, None), 1
+        for term in word_set:
+            yield (category, term), 1
+
+    def reducer_count_terms(self, category_term, counts):
         """ 
         This reducer sums the occurences of each term per category
         Returns a key value pair of: (category, term), number
         """
-
-        yield category_term, sum(compromised_reviewText)
-
-    def mapper_2(self, category_term, count_term):
-        """
-        This mapper returns all categories which a term is occuring in and the respective number of occurences per category
-        Returns a key value pair of: term, (category, count_term)
-        """
-
         category, term = category_term
-        yield term, (category, count_term)
+        sum_counts = sum(counts)
+        yield term, (category, sum_counts)
 
-    def reducer_2(self, term, category_count):
+    def reducer_count_terms_over_categories(self, term, category_count):
         """
         This reducer returns the number of occurences of a term in all categories and the number of occurences of all terms
         Returns a key value pair of: term, [(category, count_term, number_of_occurences)]
         """
 
-        all_categories_count = list(category_count)
-        number_of_occurences = sum([count for _, count in all_categories_count])
-        yield term, [(category, count_term, number_of_occurences) for category, count_term in all_categories_count]
+        category_count = list(category_count)
+        number_of_occurences = sum([count for _, count in category_count])
+        for category, count_term in category_count:
+            yield category, (term, count_term, number_of_occurences)
 
-    def mapper_3(self, term, list_category_count):
-        """
-        This mapper groups the occurences of each term per category
-        Returns a key value pair of: (category, term), (count_term, number_of_occurences)
-        """
-
-        for category_count in list_category_count:
-            category, count_term, number_of_occurences = category_count
-            yield (category, term), (count_term, number_of_occurences)
-
-    def reducer_3(self, category_term, list_category_count): 
+    def reducer_calc_chi_squared(self, category, list_category_count): 
         """
         This reducer calculates the chi squared value for each term per category.
         Returns a key value pair of: (category, term), chi_squared
         """
+        if category is None:
+            yield None, list(set(list_category_count))
+            return
+        map_category_count = { term: (count_term, number_of_occurences) for term, count_term, number_of_occurences in list_category_count}
+        category_count, N = map_category_count.pop(None)
 
-        number_count_occurence_N = list(list_category_count)
-        category, _ = category_term
-        for count in number_count_occurence_N:
+        results = []
+        for term, count in map_category_count.items():
             count_term, number_of_occurences = count
             A = count_term
             B = number_of_occurences - count_term
-            C = category_counts[category] - count_term
-            D = category_counts["N"] - category_counts[category] - B
-            chi_squared = category_counts["N"] * (A*D - B*C)**2 / ((A+B)*(A+C)*(B+D)*(C+D))
-            yield category_term, chi_squared
+            C = category_count - count_term
+            D = N - category_count - B
+            results.append((term, N * (A*D - B*C)**2 / ((A+B)*(A+C)*(B+D)*(C+D))))
+            
+        yield category, sorted(results, key=lambda x: x[1], reverse=True)[:75]
 
-    def mapper_4(self, category_term, chi_squared):
-        """
-        This mapper groups the chi squared values for each term by category. Additionally it returns all terms per category.
-        Returns a key value pair of: category, (term, chi_squared)
-        """
-
-        category, term = category_term
-        yield category, (term, chi_squared)
-        yield None, term
-
-    def reducer_4(self, category, term_chi_squared):
+    def reducer_to_output(self, category, term_chi_squared):
         """
         This reducer sorts the chi squared values and returns the 75 highest values for each category. If no category is given, all terms are returned.
         Returns a key value pair of: category, [term=chi_squared]
         """
-
         if category is None:
-            all_words = set(term_chi_squared)
-            all_words = sorted(all_words)
-            yield ', '.join(all_words), ""
-        else:
-            chi_squared_terms = list(term_chi_squared)
-            chi_squared_terms.sort(key=lambda x: x[1], reverse=True)
-            yield category, ' '.join(f"{x}:{y}" for x, y in chi_squared_terms[:75])
-
+            yield category, sorted(list(set(term_chi_squared)))
+        else: yield category, sorted(list(term_chi_squared), key=lambda x: x[1], reverse=True)[:self.options.k]
 
     def steps(self):
         return [
             MRStep(
+                mapper_init = self.init_stopwords,
                 mapper   = self.mapper_1,
                 reducer  = self.reducer_1
             ),
-            MRStep(
-                mapper   = self.mapper_2,
-                reducer  = self.reducer_2
-            ),
-            MRStep(
-                mapper   = self.mapper_3,
-                reducer  = self.reducer_3
-            ),
-            MRStep(
-                mapper   = self.mapper_4,
-                reducer  = self.reducer_4
-            )
+            MRStep(reducer  = self.reducer_2),
+            MRStep(reducer  = self.reducer_3),
+            MRStep(reducer  = self.reducer_4)
         ]
    
 if __name__ == '__main__':
-    myjob = CountingProcessor()
-    with myjob.make_runner() as runner:
-        runner.run()
-        for key, value in myjob.parse_output(runner.cat_output()):           
-            category_counts[key] = value
-        category_counts["N"] = sum(category_counts.values())
-
-    with open('./data/stopwords.txt', 'r') as f:
-        stopwords = set(f.read().splitlines())
-
-    mrjob = ChiSquaredProcessor()
-    with mrjob.make_runner() as runner:
-        runner.run()
-        
-        for key, value in mrjob.parse_output(runner.cat_output()):           
-            print(key, value, "\n", end='')
+    ChiSquaredProcessor.run()
