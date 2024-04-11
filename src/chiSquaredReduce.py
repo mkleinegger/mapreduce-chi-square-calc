@@ -62,7 +62,7 @@ class ChiSquaredProcessor(MRJob):
         Returns a key value pair of: (category, term), chi_squared
         """
         if category is None:
-            yield None, list(list_category_count)
+            yield None, sorted(list(set(list_category_count)))
             return
 
         map_category_count = { term: (count_term, number_of_occurences) for term, count_term, number_of_occurences in list_category_count}
