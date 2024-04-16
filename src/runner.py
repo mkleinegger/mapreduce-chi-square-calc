@@ -6,11 +6,12 @@ if __name__ == '__main__':
 
     with job.make_runner() as runner:
         runner.run()
+        output = {category: values for category, values in job.parse_output(runner.cat_output())}
+        tokens = output.pop(None)
 
-        for key, values in job.parse_output(runner.cat_output()):
-            if key is None:
-                print(' '.join(values))
-            else:
-                values: list[list[float, str]]
-                value_strings = [f'{value[1]}:{value[0]}' for value in values]
-                print(' '.join([key] + value_strings))
+        for key, values in sorted(output.items()):
+            values: list[list[float, str]]
+            value_strings = [f'{value[1]}:{value[0]}' for value in values]
+            print(' '.join([key] + value_strings))
+                
+        print(' '.join(tokens))
