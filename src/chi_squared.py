@@ -74,7 +74,7 @@ class ChiSquaredJob(MRJob):
             chi_squared = n * ((a * d - b * c) ** 2) / ((a + b) * (a + c) * (b + d) * (c + d))
             result.append((chi_squared, token))
 
-        yield category, sorted(result, reverse=True)[:self.options.k]
+        yield category, sorted(result, key=lambda x: (-x[0], x[1]))[:self.options.k]
 
 
     def steps(self) -> list[MRStep]:
