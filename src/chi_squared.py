@@ -26,11 +26,9 @@ class ChiSquaredJob(MRJob):
         data = json.loads(line)
         category = data['category']
 
-        # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters 
-        tokens = re.split('[^a-zA-Z<>^|]+', data['reviewText'])
-
-        # case fold
-        tokens = map(str.lower, tokens)
+        # lower text
+        # tokenises each line by using whitespaces, tabs, digits, and the characters ()[]{}.!?,;:+=-_"'`~#@&*%€$§\/ as delimiters
+        tokens = re.split('[^a-zA-Z<>^|]+', data['reviewText'].lower())
 
         # remove stopwords
         tokens = filter(lambda token: len(token) > 1 and (token not in self.stopwords), tokens)
