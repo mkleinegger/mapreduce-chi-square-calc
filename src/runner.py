@@ -12,6 +12,6 @@ if __name__ == '__main__':
         for key, values in output:
             values: list[list[float, str]]
             value_strings = [f'{value[1]}:{value[0]}' for value in values]
-            print(' '.join([key] + value_strings))
+            print(' '.join([f'<{key}>'] + value_strings))
                 
         print(' '.join(tokens))
