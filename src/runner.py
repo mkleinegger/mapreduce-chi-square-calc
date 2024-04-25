@@ -14,7 +14,6 @@ if __name__ == '__main__':
         output = sorted(map(tuple, job.parse_output(runner.cat_output())))
         tokens = sorted({token for _, values in output for _, token in values})
 
-        # sorted 
         for key, values in output:
             values: list[list[float, str]]
             value_strings = [f'{value[1]}:{value[0]}' for value in values]
