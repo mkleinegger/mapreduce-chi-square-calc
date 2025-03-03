@@ -1,8 +1,6 @@
 # Chi-squared on MapReduce
 
-This is an implementation of a MapReduce job that calculates the chi-squared
-statistic for a dataset of Amazon reviews.
-
+This is an implementation of a MapReduce job that calculates the chi-squared statistic for a dataset of Amazon reviews. A report can be found under https://mkleinegger.github.io/mapreduce-chi-square-calc/report.pdf.
 
 ## How to run
 
